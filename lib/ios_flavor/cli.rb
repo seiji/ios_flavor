@@ -1,30 +1,23 @@
 require 'thor'
 require 'thor/group'
 require 'xcodeproj'
+require "pathname"
 
 module IosFlavor
   class CLI < Thor::Group
-    class_option :frameworks, :default => %W(
-AudioToolbox
-CFNetwork
-CoreGraphics
-CoreLocation
-Foundation
-MediaPlayer
-OpenAL
-OpenGLES
-QuartzCore
-UIKit
-)
 
     def add_frameworks
-      frameworks = options[:frameworks]
+      frameworks = []
       root_path = Dir.getwd
-
-      Dir.glob("#{Dir.getwd}/projects/Test_org/*.xcodeproj").each do |xcodeproj_path|
+      Dir.glob("#{root_path}/Flavorfile").each do |flavorfile|
+        dsl = DSL.evaluate(Pathname.new(flavorfile))
+        frameworks = dsl.frameworks
+      end
+      
+      Dir.glob("#{root_path}/**/*.xcodeproj").each do |xcodeproj_path|        
+        puts xcodeproj_path
         project = Xcodeproj::Project.new(xcodeproj_path)
         project.add_frameworks(frameworks)
-
         project.save_as("#{Dir.getwd}/projects/Test/Test.xcodeproj")
       end
     end
