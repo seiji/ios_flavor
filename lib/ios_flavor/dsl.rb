@@ -1,5 +1,14 @@
 
 module IosFlavor
+
+  class FlavorError < StandardError
+    def self.status_code(code)
+      define_method(:status_code) { code }
+    end
+  end
+
+  class FlavorfileError < FlavorError ;status_code(2) end
+
   class DSL
     attr_reader :platform_name
     attr_reader :version
@@ -28,4 +37,5 @@ module IosFlavor
       @frameworks.push(name)
     end
   end
+
 end
