@@ -18,14 +18,14 @@ Or install it yourself as:
 
 ## Usage
 
-$ cd $XCODE_PROJECT
+    $ cd $XCODE_PROJECT
 
-$ cat <<EOS > Flavorfile
-platform 'iPhoneOS', '6.0'
-framework 'MobileCoreServices'
-EOS
+    $ cat <<EOS > Flavorfile
+    platform 'iPhoneOS', '6.0'
+    framework 'MobileCoreServices'
+    EOS
 
-$ ios_flavor
+    $ ios_flavor
 
 ## Contributing
 
