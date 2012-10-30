@@ -20,6 +20,11 @@ Or install it yourself as:
 
 $ cd $XCODE_PROJECT
 
+$ cat <<EOS > Flavorfile
+platform 'iPhoneOS', '6.0'
+framework 'MobileCoreServices'
+EOS
+
 $ ios_flavor
 
 ## Contributing
