@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+
+require 'ios_flavor'
+
+IosFlavor::CLI.start
