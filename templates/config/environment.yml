@@ -1,0 +1,22 @@
+development:
+  scheme: AppDev                # replace with your app name
+  configuration: Debug
+  sdk: iphonesimulator
+
+test:
+  scheme: AppTest               # replace with your app anme
+  configuration: Debug
+  sdk: iphonesimulator
+
+adhoc:
+  scheme: AppAdhoc              # replace with your app name
+  configuration: Debug
+  sdk: iphoneos
+  profile: Your Profile         # replace with your profile
+  testflight_distribution_lists:
+    - YourList                  # replace with your distlist
+      
+production:
+  scheme: AppProduction         # replace with your app name
+  configuration: Release
+  sdk: iphoneos

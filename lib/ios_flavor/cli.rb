@@ -4,24 +4,57 @@ require 'xcodeproj'
 require "pathname"
 
 module IosFlavor
-  class CLI < Thor::Group
+  class CLI < Thor
 
-    def add_frameworks
-      dsl = nil
-      frameworks = []
+    def initialize(*args)
+      super
+      @dsl = nil
+      @xcodeproj_path = nil;
       root_path = Dir.getwd
-      
+
       Dir.glob("#{root_path}/Flavorfile").each do |flavorfile|
-        dsl = DSL.evaluate(Pathname.new(flavorfile))
-        frameworks = dsl.frameworks
+        @dsl = DSL.evaluate(Pathname.new(flavorfile))
       end
 
-      if (dsl)
+      if (@dsl)
         Dir.glob("#{root_path}/**/*.xcodeproj").each do |xcodeproj_path|        
-          project = Xcodeproj::Project.new(xcodeproj_path)
-          project.add_frameworks(dsl, frameworks)
-          project.save_as(xcodeproj_path)
+          @project = Xcodeproj::Project.new(xcodeproj_path)
+          @xcodeproj_path = xcodeproj_path
         end
+      end
+    end
+
+    desc "init", "create Flavorfile skelton"
+    def init
+      File.open('Flavorfile', 'w') do |io|
+        io.puts <<EOS
+platform 'iPhoneOS', '6.0'
+
+#framework 'MobileCoreServices'
+
+settings \
+common: {
+#  'HEADEsettingsR_SEARCH_PATHS' => ['${SDKROOT}/usr/include/libxml2'],
+#  'GCC_ENABLE_OBJC_EXCEPTIONS'  => 'YES',
+#  'SKIP_INSTALL'                => 'NO'
+},
+'Debug' => {
+#  'OTHER_LDFLAGS' => ['-ObjC,-all_load'],
+},
+'Release'=> {
+#  'OTHER_LDFLAGS' => ['-Wl,-S,-x'],
+}
+
+EOS
+      end
+    end
+
+    desc 'install', "flavor ur xcodeproject"
+    def install
+      if (@dsl and @project)
+        @project.add_frameworks(@dsl)
+        @project.add_settings(@dsl)
+        @project.save_as(@xcodeproj_path)
       end
     end
   end
@@ -53,7 +86,17 @@ module Xcodeproj
       nil
     end
 
-    def add_frameworks(dsl, frameworks)
+    def add_settings(dsl)
+      self.targets.each do |target|
+        target.build_configurations.each do |conf|
+          puts "Add Settings [#{target.name} #{conf.name}]"
+          build_settings = dsl.build_settings[:common].merge(dsl.build_settings[conf.name])
+          conf.build_settings.merge!(build_settings)
+        end
+      end
+    end
+
+    def add_frameworks(dsl)
       group = get_group('Frameworks')
       frameworks_build_phases_list = []
       self.targets.each do |target|
@@ -71,7 +114,7 @@ module Xcodeproj
       path = `xcode-select --print-path`.chomp
       platform_path = Pathname.new("#{path}/Platforms/#{dsl.platform_name}.platform/Developer/SDKs/#{dsl.platform_name}#{dsl.version}.sdk/")
 
-      frameworks.each do |fname|
+      dsl.frameworks.each do |fname|
         unless (group.files.find {|f|
                   cname = (f.name =~ /framework$/) ? "#{fname}.framework" :  fname
                   f.name == cname
@@ -79,11 +122,10 @@ module Xcodeproj
           if (framework = add_system_framework(platform_path, fname))
 
             framework.group = group
-            frameworks_build_phases_list.each do |buildPhase|
-              buildPhase.files << framework
+            frameworks_build_phases_list.each do |build_phase|
+              build_phase.files << framework.build_files.new
             end
           end
-
         end
       end
     end

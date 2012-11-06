@@ -1,0 +1,180 @@
+require 'rubygems'
+require 'rake'
+require "yaml"
+
+PROJECT_DIR = File.dirname __FILE__
+CONFIG_DIR  = File.join(PROJECT_DIR, 'config')
+
+@project = OpenStruct.new(YAML.load_file(File.join(CONFIG_DIR, 'project.yml')))
+environments = YAML.load_file(File.join(CONFIG_DIR, 'environment.yml'))
+environment = OpenStruct.new(environments[ENV['iOS_ENV'] || 'development'])
+
+namespace :xcode do
+  desc 'List available sdks'
+  task :sdks do
+    system_or_exit(%q[xcodebuild -showsdks])
+  end
+
+  desc 'List available schemes'
+  task :schemes do
+    system_or_exit(%Q[xcodebuild -list -workspace #{@project.name}.xcodeproj/project.xcworkspace])
+  end
+end
+
+task :environment, [:configuration, :sdk, :scheme, :profile] do |t, args|
+  args.with_defaults( :scheme => ENV['IOS_SCHEME'] || environment.scheme || @project.name,
+                      :sdk => ENV['IOS_SDK'] || environment.sdk || 'iphonesimulator',
+                      :configuration => ENV['IOS_CONFIGURATION'] || environment.configuration || 'Debug',
+                      :profile => ENV['IOS_PROVISIONING_PROFILE'] || environment.profile )
+  @configuration = args.configuration
+  @sdk = args.sdk
+  @scheme = args.scheme
+  @profile = args.profile
+end
+
+desc 'Cleans compiled application'
+task :clean => :environment do
+#  xcodebuild('clean')
+end
+
+desc 'Build the application'
+task :build => :environment do
+  puts @scheme
+  #  puts @profile
+end
+
+desc 'Signs an application for distribution'
+task :sign => :build do
+  signing_command = []
+  signing_command << %Q[xcrun -sdk iphoneos PackageApplication]
+  signing_command << "#{BUILDS_DIR}/#{@configuration}-iphoneos/#{@project.name}.app"
+  signing_command << %Q[--sign]
+  signing_command << %Q["#{@project.code_signing_identity}"]
+  signing_command << %Q[--embed]
+  signing_command << %Q["#{File.join(PROVISIONING_PROFILES_DIR, @profile)}.mobileprovision"]
+
+  system_or_exit signing_command.join(' ')
+end
+
+task :verify => :sign do
+  verify_command = []
+  verify_command << %Q[codesign -d --file-list -]
+  verify_command << "#{BUILDS_DIR}/#{@configuration}-iphoneos/#{@project.name}.app"
+
+  system_or_exit verify_command.join(' ')
+end
+
+desc 'Runs through the specs to ensure functionality'
+task :specs do
+  Rake::Task[:environment].invoke('Debug', 'iphonesimulator', 'Specs')
+  Rake::Task[:build].execute()
+  ENV["DYLD_ROOT_PATH"] = SDK_DIR
+  ENV["IPHONE_SIMULATOR_ROOT"] = SDK_DIR
+  ENV["CFFIXED_USER_HOME"] = Dir.tmpdir
+  ENV["CEDAR_HEADLESS_SPECS"] = "1"
+  ENV["CEDAR_REPORTER_CLASS"] = "CDRColorizedReporter"
+
+  system_or_exit(%Q[#{SDK_DIR}/usr/libexec/securityd &])
+  system_or_exit(%Q[#{File.join(built_app_location('Debug', 'iphonesimulator', 'Specs'), 'Specs')} -RegisterForSystemEvents])
+  Rake::Task[:environment].execute()
+end
+
+desc 'Assembles a deployable app'
+task :package do
+  ENV['IOS_SDK'] = 'iphoneos'
+  Rake::Task[:verify].invoke
+end
+
+task :run_gh_unit_ci do
+  output_file = [ @configuration, @sdk, 'gh_unit' ].join('-')
+  ENV['GHUNIT_CLI'] = '1'
+  ENV['GHUNIT_AUTORUN'] = '1'
+  xcode_command = []
+  xcode_command << %Q(xcodebuild)
+  xcode_command << %Q(-sdk #{@sdk})
+  xcode_command << %Q(-target #{@scheme})
+  xcode_command << %Q(-configuration #{@configuration})
+  system_or_exit(xcode_command.join(" "), output_file)
+end
+
+namespace :version do
+  desc 'Bumps up the current bundle version'
+  task :bump do
+    system_or_exit(%Q[agvtool next-version -all])
+  end
+  desc 'Explicitly set the BUNDLE_VERSION or MARKETING_VERSION'
+  task :write do
+    if bundle_version = ENV['BUNDLE_VERSION']
+      system_or_exit(%Q[agvtool new-version -all #{bundle_version}])
+    end
+    if marketing_version = ENV['MARKETING_VERSION']
+      system_or_exit(%Q[agvtool new-marketing-version #{marketing_version}])
+    end
+  end
+end
+
+desc 'Test GHUnit'
+task :gh_unit do
+  Rake::Task[:environment].invoke('Debug', 'iphonesimulator', 'GHCountTest')
+  Rake::Task[:run_gh_unit_ci].execute()
+end
+
+# desc 'Push a build up to TestFlight. Ensure TESTFLIGHT_API_TOKEN has been set with your TestFlight API token.'
+# task :deploy => [:environment, :package] do
+#   if @testflight_api_token.nil? || @testflight_api_token.empty?
+#     raise "Please set TESTFLIGHT_API_TOKEN with your TestFlight API token."
+#   end
+
+#   ipa_file = File.join(BUILDS_DIR, "#{@configuration}-iphoneos", "#{@project.name}.ipa")
+#   notes_file = release_notes_file
+
+#   begin
+#     deploy_command = []
+#     deploy_command << %Q[curl #{TESTFLIGHT_URL} -F file=@#{ipa_file}]
+#     deploy_command << %Q[-F api_token='#{@testflight_api_token}']
+#     deploy_command << %Q[-F team_token='#{@project.testflight_api_team_token}']
+#     deploy_command << %Q[-F "notes=<#{notes_file.path}"]
+
+#     if distribution_lists = environment.testflight_distribution_lists
+#       deploy_command << %Q[ -F notify=True -F distribution_lists='#{distribution_lists.join(',')}']
+#     end
+
+#     system_or_exit(deploy_command.join(' '))
+#   ensure
+#     notes_file.unlink
+#   end
+# end
+
+private
+def build_dir(configuration, effective_platform_name)
+  File.join(BUILDS_DIR, [configuration, effective_platform_name].join('-'))
+end
+
+def built_app_location(configuration, effective_platform_name, application)
+  File.join(build_dir(configuration, effective_platform_name), "#{application}.app")
+end
+
+def system_or_exit(cmd, stdout = nil)
+  puts "$ #{cmd}"
+  cmd += " >#{stdout}" if stdout
+  system(cmd) or raise "command failed. "
+end
+
+def xcodebuild(build_action = 'build')
+  output_file = [ @configuration, @sdk, build_action ].join('-')
+  xcode_command = []
+  xcode_command << %Q[xcodebuild -workspace #{@project.name}.xcodeproj/project.xcworkspace]
+  xcode_command << %Q[-scheme #{@scheme}]
+  xcode_command << %Q[-sdk #{@sdk}]
+  xcode_command << %Q[-configuration #{@configuration}]
+  xcode_command << build_action
+  xcode_command << %Q[SYMROOT=#{BUILDS_DIR}]
+
+  if !(@profile.nil? || @profile.empty?)
+    system_or_exit(%Q[cp "#{File.join(PROVISIONING_PROFILES_DIR, @profile)}.mobileprovision" "#{ENV['HOME']}/Library/MobileDevice/Provisioning Profiles/."])
+    xcode_command << %Q[CODE_SIGN_IDENTITY="#{@project.code_signing_identity}"]
+    xcode_command << %Q("PROVISIONING_PROFILE[sdk=#{@sdk}*]"=#{@profile})
+  end
+
+  system_or_exit(xcode_command.join(' '), output_file(output_file))
+end

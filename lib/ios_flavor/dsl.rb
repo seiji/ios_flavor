@@ -13,6 +13,7 @@ module IosFlavor
     attr_reader :platform_name
     attr_reader :version
     attr_reader :frameworks
+    attr_reader :build_settings
 
     def self.evaluate(flavorfile)
       flavor = new
@@ -26,6 +27,9 @@ module IosFlavor
       @platform_name = 'iPhoneOS'
       @version       = '6.0'
       @frameworks = []
+      @settings = {
+        :common => {}
+      }
     end
 
     def platform(name='iPhoneOS', version='6.0')                # iPhoneOS, 
@@ -36,6 +40,9 @@ module IosFlavor
     def framework(name)
       @frameworks.push(name)
     end
-  end
 
+    def settings(build_settings)
+      @build_settings = build_settings
+    end
+  end
 end
