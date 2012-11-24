@@ -1,0 +1,27 @@
+platform 'iPhoneOS', '6.0'
+
+# framework 'AssetsLibrary'
+# framework 'AVFoundation'
+# framework 'MobileCoreServices'
+# framework 'CoreMedia'
+# framework 'CoreVideo'
+# framework 'OpenGLES'
+# framework 'QuartzCore'
+# framework 'Security'
+# framework 'libz.dylib'
+
+settings common: {
+  # versioning section for agvtool
+  'CURRENT_PROJECT_VERSION' => 1,
+  'VERSIONING_SYSTEM'       => 'apple-generic',
+
+#  'HEADER_SEARCH_PATHS' => ['${SDKROOT}/usr/include/libxml2'],
+#  'GCC_ENABLE_OBJC_EXCEPTIONS'  => 'YES',
+#  'SKIP_INSTALL'                => 'NO'
+},
+'Debug' => {
+#  'OTHER_LDFLAGS' => ['-ObjC,-all_load'],
+},
+'Release'=> {
+#  'OTHER_LDFLAGS' => ['-Wl,-S,-x'],
+}

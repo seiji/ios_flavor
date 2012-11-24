@@ -1,17 +1,19 @@
 require 'thor'
-require 'thor/group'
 require 'xcodeproj'
 require "pathname"
 
 module IosFlavor
   class CLI < Thor
+    include Thor::Actions
 
     def initialize(*args)
       super
       @dsl = nil
       @xcodeproj_path = nil;
       root_path = Dir.getwd
-
+#      puts root_path
+#      root_path = File.join(root_path,"snap")        # TO DELETE:
+      
       Dir.glob("#{root_path}/Flavorfile").each do |flavorfile|
         @dsl = DSL.evaluate(Pathname.new(flavorfile))
       end
@@ -20,33 +22,18 @@ module IosFlavor
         Dir.glob("#{root_path}/**/*.xcodeproj").each do |xcodeproj_path|        
           @project = Xcodeproj::Project.new(xcodeproj_path)
           @xcodeproj_path = xcodeproj_path
+
+          @project_dir = File.dirname @xcodeproj_path
+          @project_name = File.basename @project_dir
+          @project_dir_source = File.join(@project_dir, @project_name)
         end
       end
     end
 
     desc "init", "create Flavorfile skelton"
     def init
-      File.open('Flavorfile', 'w') do |io|
-        io.puts <<EOS
-platform 'iPhoneOS', '6.0'
-
-#framework 'MobileCoreServices'
-
-settings \
-common: {
-#  'HEADEsettingsR_SEARCH_PATHS' => ['${SDKROOT}/usr/include/libxml2'],
-#  'GCC_ENABLE_OBJC_EXCEPTIONS'  => 'YES',
-#  'SKIP_INSTALL'                => 'NO'
-},
-'Debug' => {
-#  'OTHER_LDFLAGS' => ['-ObjC,-all_load'],
-},
-'Release'=> {
-#  'OTHER_LDFLAGS' => ['-Wl,-S,-x'],
-}
-
-EOS
-      end
+      IosFlavor::CLI.source_root(IosFlavor.templates)
+      template('Flavorfile', 'Flavorfile')
     end
 
     desc 'install', "flavor ur xcodeproject"
@@ -55,8 +42,39 @@ EOS
         @project.add_frameworks(@dsl)
         @project.add_settings(@dsl)
         @project.save_as(@xcodeproj_path)
+
+        product_name = nil
+        @project.targets.each do |target|
+          product_name = target.name
+        end
+        unless product_name
+          puts "target not found"
+          return;
+        end
+        
+        opts = {
+          product_name: product_name
+        }
+        IosFlavor::CLI.source_root(IosFlavor.templates)
+        template('Rakefile',  File.join(@project_dir, 'Rakefile'))
+        template(
+                 File.join('config','environment.yml'),
+                 File.join(@project_dir, 'config', 'environment.yml'),
+                 opts)
+        template(
+                 File.join('config','project.yml'),
+                 File.join(@project_dir, 'config', 'project.yml'),
+                 opts)
+
+        directory('classes',  File.join(@project_dir_source, 'classes'))
+        directory('lib',      File.join(@project_dir_source, 'lib'))
+        directory('resources',File.join(@project_dir_source, 'resources'))
+
+        # versioning
+        
       end
     end
+
   end
 end
 
@@ -75,6 +93,7 @@ module Xcodeproj
       end
       target = platform_path + path
       target.realpath           # check framework
+
       puts "Add Framework [#{name}]"
       self.files.new({
                        'name' => name,
@@ -87,6 +106,12 @@ module Xcodeproj
     end
 
     def add_settings(dsl)
+      self.build_configurations.each do |conf|
+        puts "Add Settings [project #{conf.name}]"
+        build_settings = dsl.build_settings[:common].merge(dsl.build_settings[conf.name])
+        conf.build_settings.merge!(build_settings)
+      end
+
       self.targets.each do |target|
         target.build_configurations.each do |conf|
           puts "Add Settings [#{target.name} #{conf.name}]"
@@ -106,6 +131,7 @@ module Xcodeproj
       end
       self.files.sort{|a,b| a.name <=> b.name }.each do |file|
         path = file.path
+
         if (path =~ /^System\/Library\/Frameworks/ or path =~ /^usr\/lib/)
           file.group = group
         end
@@ -120,10 +146,10 @@ module Xcodeproj
                   f.name == cname
                 })
           if (framework = add_system_framework(platform_path, fname))
-
+            
             framework.group = group
             frameworks_build_phases_list.each do |build_phase|
-              build_phase.files << framework.build_files.new
+              build_phase.files << framework
             end
           end
         end

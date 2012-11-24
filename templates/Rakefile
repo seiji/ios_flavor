@@ -2,25 +2,20 @@ require 'rubygems'
 require 'rake'
 require "yaml"
 
-PROJECT_DIR = File.dirname __FILE__
-CONFIG_DIR  = File.join(PROJECT_DIR, 'config')
+PROJECT_DIR               = File.dirname __FILE__
+CONFIG_DIR                = File.join(PROJECT_DIR, 'config')
+BUILDS_DIR                = File.join(PROJECT_DIR, "build")
+PROVISIONING_PROFILES_DIR = File.join(PROJECT_DIR, 'provisioning')
 
-@project = OpenStruct.new(YAML.load_file(File.join(CONFIG_DIR, 'project.yml')))
+BUILDS_OPTS = %w[ONLY_ACTIVE_ARCH=NO]
+BUILDS_OPTS_MAKE_DSYM =%w[GCC_GENERATE_DEBUGGING_SYMBOLS=YES DEBUG_INFORMATION_FORMAT=dwarf-with-dsym DEPLOYMENT_POSTPROCESSING=YES STRIP_INSTALLED_PRODUCT=YES SEPARATE_STRIP=YES COPY_PHASE_STRIP=NO]
+
+# -- settings
+@project     = OpenStruct.new(YAML.load_file(File.join(CONFIG_DIR, 'project.yml')))
 environments = YAML.load_file(File.join(CONFIG_DIR, 'environment.yml'))
-environment = OpenStruct.new(environments[ENV['iOS_ENV'] || 'development'])
+environment  = OpenStruct.new(environments[ENV['iOS_ENV'] || 'development'])
 
-namespace :xcode do
-  desc 'List available sdks'
-  task :sdks do
-    system_or_exit(%q[xcodebuild -showsdks])
-  end
-
-  desc 'List available schemes'
-  task :schemes do
-    system_or_exit(%Q[xcodebuild -list -workspace #{@project.name}.xcodeproj/project.xcworkspace])
-  end
-end
-
+# -- common
 task :environment, [:configuration, :sdk, :scheme, :profile] do |t, args|
   args.with_defaults( :scheme => ENV['IOS_SCHEME'] || environment.scheme || @project.name,
                       :sdk => ENV['IOS_SDK'] || environment.sdk || 'iphonesimulator',
@@ -32,15 +27,15 @@ task :environment, [:configuration, :sdk, :scheme, :profile] do |t, args|
   @profile = args.profile
 end
 
+# -- basic 
 desc 'Cleans compiled application'
 task :clean => :environment do
-#  xcodebuild('clean')
+  xcodebuild('clean')
 end
 
 desc 'Build the application'
 task :build => :environment do
-  puts @scheme
-  #  puts @profile
+  xcodebuild('build')
 end
 
 desc 'Signs an application for distribution'
@@ -97,22 +92,6 @@ task :run_gh_unit_ci do
   system_or_exit(xcode_command.join(" "), output_file)
 end
 
-namespace :version do
-  desc 'Bumps up the current bundle version'
-  task :bump do
-    system_or_exit(%Q[agvtool next-version -all])
-  end
-  desc 'Explicitly set the BUNDLE_VERSION or MARKETING_VERSION'
-  task :write do
-    if bundle_version = ENV['BUNDLE_VERSION']
-      system_or_exit(%Q[agvtool new-version -all #{bundle_version}])
-    end
-    if marketing_version = ENV['MARKETING_VERSION']
-      system_or_exit(%Q[agvtool new-marketing-version #{marketing_version}])
-    end
-  end
-end
-
 desc 'Test GHUnit'
 task :gh_unit do
   Rake::Task[:environment].invoke('Debug', 'iphonesimulator', 'GHCountTest')
@@ -121,7 +100,7 @@ end
 
 # desc 'Push a build up to TestFlight. Ensure TESTFLIGHT_API_TOKEN has been set with your TestFlight API token.'
 # task :deploy => [:environment, :package] do
-#   if @testflight_api_token.nil? || @testflight_api_token.empty?
+#   if @testflight_api_token.nil? || @testflight_apiv_token.empty?
 #     raise "Please set TESTFLIGHT_API_TOKEN with your TestFlight API token."
 #   end
 
@@ -145,7 +124,58 @@ end
 #   end
 # end
 
+namespace :version do
+
+  desc 'Show bundle version (CFBundleVersion)'
+  task :bundle do
+    system_or_exit(%Q[agvtool what-version])
+  end
+
+  desc 'Show marketing version (CFBundleShortVersionString)'
+  task :marketing do
+    system_or_exit(%Q[agvtool what-marketing-version -terse1])
+  end
+
+  desc 'Bumps up the current bundle version'
+  task :bump do
+    system_or_exit(%Q[agvtool next-version -all])
+  end
+
+  desc 'Explicitly set the BUNDLE_VERSION or MARKETING_VERSION'
+  task :write do
+    if bundle_version = ENV['BUNDLE_VERSION']
+      system_or_exit(%Q[agvtool new-version -all #{bundle_version}])
+    end
+    if marketing_version = ENV['MARKETING_VERSION']
+      system_or_exit(%Q[agvtool new-marketing-version #{marketing_version}])
+    end
+  end
+end
+
+namespace :xcode do
+  desc 'List available sdks'
+  task :sdks do
+    system_or_exit(%q[xcodebuild -showsdks])
+  end
+
+  desc 'Show build settings'
+  task :env do
+    system_or_exit(%Q[xcodebuild -project #{@project.name}.xcodeproj -showBuildSettings])
+  end
+
+  desc 'Lists the targets and configurations in a project'
+  task :list do
+    system_or_exit(%Q[xcodebuild -list])
+  end
+
+  desc 'List available schemes'
+  task :schemes do
+    system_or_exit(%Q[xcodebuild -list -workspace #{@project.name}.xcodeproj/project.xcworkspace])
+  end
+end
+
 private
+
 def build_dir(configuration, effective_platform_name)
   File.join(BUILDS_DIR, [configuration, effective_platform_name].join('-'))
 end
@@ -158,6 +188,14 @@ def system_or_exit(cmd, stdout = nil)
   puts "$ #{cmd}"
   cmd += " >#{stdout}" if stdout
   system(cmd) or raise "command failed. "
+  
+end
+
+def output_file(target)
+  Dir.mkdir(BUILDS_DIR) unless File.exists?(BUILDS_DIR)
+  output_file = File.join(BUILDS_DIR, "#{target}.log")
+  puts "Output: #{output_file}"
+  output_file
 end
 
 def xcodebuild(build_action = 'build')
@@ -169,6 +207,7 @@ def xcodebuild(build_action = 'build')
   xcode_command << %Q[-configuration #{@configuration}]
   xcode_command << build_action
   xcode_command << %Q[SYMROOT=#{BUILDS_DIR}]
+  xcode_command << BUILDS_OPTS.join(' ')
 
   if !(@profile.nil? || @profile.empty?)
     system_or_exit(%Q[cp "#{File.join(PROVISIONING_PROFILES_DIR, @profile)}.mobileprovision" "#{ENV['HOME']}/Library/MobileDevice/Provisioning Profiles/."])
