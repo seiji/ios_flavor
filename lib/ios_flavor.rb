@@ -1,6 +1,7 @@
 require "ios_flavor/version"
 require "ios_flavor/cli"
 require "ios_flavor/dsl"
+require "ios_flavor/ext"
 
 module IosFlavor
   def self.read_file (file)

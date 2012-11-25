@@ -125,7 +125,6 @@ end
 # end
 
 namespace :version do
-
   desc 'Show bundle version (CFBundleVersion)'
   task :bundle do
     system_or_exit(%Q[agvtool what-version])

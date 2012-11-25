@@ -20,12 +20,14 @@ Or install it yourself as:
 
     $ cd $XCODE_PROJECT
 
-    $ cat <<EOS > Flavorfile
-    platform 'iPhoneOS', '6.0'
-    framework 'MobileCoreServices'
-    EOS
+generate flavor template
 
-    $ ios_flavor
+    $ flavor init
+
+setup
+
+    $ flavor install
+
 
 ## Contributing
 
