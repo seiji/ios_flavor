@@ -162,7 +162,7 @@ namespace :xcode do
     system_or_exit(%Q[xcodebuild -project #{@project.name}.xcodeproj -showBuildSettings])
   end
 
-  desc 'Lists the targets and configurations in a project'
+  desc 'List the targets and configurations in a project'
   task :list do
     system_or_exit(%Q[xcodebuild -list])
   end
@@ -185,9 +185,8 @@ end
 
 def system_or_exit(cmd, stdout = nil)
   puts "$ #{cmd}"
-  cmd += " >#{stdout}" if stdout
+  cmd += " | tee #{stdout}" if stdout
   system(cmd) or raise "command failed. "
-  
 end
 
 def output_file(target)

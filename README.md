@@ -1,6 +1,16 @@
 # IosFlavor
 
-add xcode project system frameworks
+add xcode project some features
+
+## Feature
+
+- Add Frameworks
+
+- Add Build Settings
+
+- Versioning (use agvtool)
+
+- Default Layout 
 
 ## Installation
 
@@ -28,6 +38,20 @@ setup
 
     $ flavor install
 
+You will now have access to a variety of tasks such as clean and build.
+
+    $ rake -T
+    rake build              # Build the application
+    rake clean              # Cleans compiled application
+    rake specs              # Runs through the specs to ensure functionality
+    rake version:bump       # Bumps up the current bundle version
+    rake version:bundle     # Show bundle version (CFBundleVersion)
+    rake version:marketing  # Show marketing version (CFBundleShortVersionString)
+    rake version:write      # Explicitly set the BUNDLE_VERSION or MARKETING_VERSION
+    rake xcode:env          # Show build settings
+    rake xcode:list         # List the targets and configurations in a project
+    rake xcode:schemes      # List available schemes
+    rake xcode:sdks         # List available sdks
 
 ## Contributing
 
